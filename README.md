@@ -140,6 +140,7 @@ See the original README for dashboard examples - they work the same way with the
 
 ## Contributing
 
+Developed with the help of Rose Nightingale, who performed all the testing of modbus functionality.
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
