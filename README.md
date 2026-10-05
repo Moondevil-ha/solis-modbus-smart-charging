@@ -41,8 +41,7 @@ pyscript:
 ```
 
 3. Copy `solis_modbus_smart_charging.py` to your `config/pyscript` directory
-4. There are a couple of references in the code to the dispatch entity. Ensure you change this to match your own entities.
-5. Add the automation to your `automations.yaml` or through the Home Assistant UI
+4. Add the automation to your `automations.yaml` or through the Home Assistant UI, setting `entity_prefix` and `dispatch_sensor` to match your own entities (see below). No changes to the script itself are needed.
 
 ## Configuration
 
@@ -72,13 +71,21 @@ actions:
     data:
       config: |-
         {
-          "entity_prefix": "solis_modbus",
+          "entity_prefix": "solis",
           "dispatch_sensor": "binary_sensor.octopus_energy_a_42185595_intelligent_dispatching"
         }
 mode: single
 ```
-Note: The dispatching sensor will usually include your account ID, please check and edit the automation appropriately for the correct entity.
-Note2: You will need to change the entity prefix to match your specific setup.
+**Setting `dispatch_sensor`:** the dispatching sensor name usually includes your Octopus account ID (or your charger's serial number if you have an EV charger such as Hypervolt or Ohme). Check the exact name under Developer Tools > States.
+
+**Setting `entity_prefix`:** this must match how the Solis Modbus integration has named your charge slot entities. In Developer Tools > States, filter on `time_charging_charge_start_slot_1`. Your prefix is everything before `_time_charging_charge_start_slot_1`:
+
+| Entity shown in Home Assistant | `entity_prefix` to use |
+|---|---|
+| `time.solis_time_charging_charge_start_slot_1` | `solis` |
+| `time.solis_s6_solis_time_charging_charge_start_slot_1` | `solis_s6_solis` |
+
+From v1.1.1 the `time.` part is optional, so `solis` and `time.solis` both work. If the prefix is wrong, the script stops before writing anything and logs the entity name it was looking for.
 
 ## How It Works
 
@@ -111,7 +118,8 @@ Note2: You will need to change the entity prefix to match your specific setup.
 3. Modbus Communication:
    - Connection failures are handled gracefully with error logging
    - Updates are processed individually to prevent complete failure if one update fails
-   - Local entities reflect the intended state even if Modbus communication fails
+   - Each slot time is written through Home Assistant's `time.set_value` service, the same route as changing it by hand in the UI
+   - Unavailable slot entities are skipped and reported as failures rather than counted as written
 
 ## Troubleshooting
 
@@ -124,13 +132,31 @@ Note2: You will need to change the entity prefix to match your specific setup.
    - If you see connection errors, verify your network connectivity to the inverter
    - If time updates fail, check that your Modbus write permissions are correct
    - If windows aren't updating, check the Octopus dispatch sensor is providing data
-   - Check your entity names are reflected correctly in the pyscript, and the automation
+   - "Entity ... not found or unavailable": check `entity_prefix` as described under Configuration. If the entity exists but shows as unavailable, the Solis Modbus integration is not polling the inverter
+
+3. Solis Modbus 4.x upgrade trap:
+   - If the Solis Modbus integration was set up without the inverter's serial number, version 4.x defers its migration on every restart, creates duplicate devices, and never starts polling. Every charge slot entity then shows as unavailable.
+   - Re-adding the integration on top of the old entry can fail with `DeviceIdentifierCollisionError`.
+   - The fix is to remove the Solis Modbus integration entry completely, then add it again with the serial number entered. Your `entity_prefix` may change afterwards, so check it again.
+
+4. Data logger and SolisCloud:
+   - On older S2-WL-ST data logger firmware, any Modbus TCP connection on port 502 stops the logger reporting to SolisCloud. Later firmware supports both at once; Solis support can update the logger remotely on request.
 
 ## Example Dashboard View
 
 See the original README for dashboard examples - they work the same way with the Modbus implementation.
 
 ## Version History
+
+### v1.1.1
+- Fixed the `time.set_value` service call, which Home Assistant was rejecting with "extra keys not allowed"
+- `entity_prefix` now works with or without the `time.` domain
+- Checks the first charge slot entity exists before writing, with a clear error if not
+- Unavailable entities are skipped and reported, so the script no longer reports success when the Solis Modbus integration is not polling
+- Reports how many slot times were written and how many failed
+
+### v1.1.0
+- Writes now go through Home Assistant's `time.set_value` service instead of the Solis Modbus integration's internal data, which broke in Solis Modbus 4.2.x
 
 ### v1.0
 - Initial release with Modbus TCP control
